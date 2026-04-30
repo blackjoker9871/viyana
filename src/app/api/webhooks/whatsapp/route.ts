@@ -1,5 +1,5 @@
 import { google } from '@ai-sdk/google';
-import { generateText, CoreMessage } from 'ai';
+import { generateText, ModelMessage } from 'ai';
 import { getSystemPrompt } from '@/lib/ai/system-prompts';
 import { Redis } from '@upstash/redis';
 
@@ -56,10 +56,10 @@ export async function POST(req: Request) {
       if (userMessageContent) {
         // 1. Fetch conversation history from Redis
         const historyKey = `whatsapp_chat:${fromNumber}`;
-        let chatHistory: CoreMessage[] = [];
+        let chatHistory: ModelMessage[] = [];
         
         if (redis) {
-          const storedHistory = await redis.get<CoreMessage[]>(historyKey);
+          const storedHistory = await redis.get<ModelMessage[]>(historyKey);
           if (storedHistory && Array.isArray(storedHistory)) {
             chatHistory = storedHistory;
           }
