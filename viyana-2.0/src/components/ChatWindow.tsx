@@ -281,7 +281,9 @@ const ChatWindow = ({ chatId = 'default' }: { chatId?: string }) => {
                     ? 'bg-blue-600 text-white' 
                     : 'bg-white/5 text-gray-200 border border-white/5'
                 }`}>
-                  {m.content}
+                  {m.role === 'assistant' 
+                    ? m.content.split(/JSON:\s*\{|\{\s*"automation"/)[0].trim() 
+                    : m.content}
                   
                   {/* Render Tool Invocations */}
                   {m.toolInvocations?.map((toolInvocation) => {
