@@ -1,0 +1,15 @@
+FROM ollama/ollama:latest
+
+# Expose the Ollama port
+EXPOSE 11434
+
+# Set environment variables
+ENV OLLAMA_HOST=0.0.0.0
+
+# Pre-download models (Gemma 2 9B and Gemma 4 26B MoE)
+RUN ollama serve & sleep 5 && \
+    ollama pull gemma2:9b && \
+    ollama pull gemma4:26b
+
+# Final command to start the server
+ENTRYPOINT ["ollama", "serve"]

@@ -1,0 +1,276 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Evolution API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$node[\"Evolution API Webhook\"].json[\"body\"][\"data\"][\"key\"][\"fromMe\"]}}",
+              "operation": "isFalse"
+            }
+          ]
+        }
+      },
+      "id": "filter-from-me",
+      "name": "Ignore Self Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = items[0].json.body;\nconst data = body.data;\nconst message = data.message?.conversation || data.message?.extendedTextMessage?.text || '';\nconst remoteJid = data.key.remoteJid;\nconst isGroup = remoteJid.endsWith('@g.us');\nconst senderName = data.pushName || 'User';\n\nreturn [{\n  json: {\n    message,\n    remoteJid,\n    isGroup,\n    senderName\n  }\n}];"
+      },
+      "id": "normalize-message",
+      "name": "Normalize Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$node[\"Normalize Message\"].json[\"isGroup\"]}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-is-group",
+      "name": "Is Group?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://evo.aethelsolutions.in/group/findGroup/{{$node[\"Normalize Message\"].json[\"remoteJid\"]}}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "012F15E79DDC-42FA-B93E-5D1C5AD55E08"
+            }
+          ]
+        }
+      },
+      "id": "fetch-group-info",
+      "name": "Fetch Group Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1000,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$node[\"Fetch Group Info\"].json[\"subject\"]}}",
+              "value2": "Viyana"
+            }
+          ]
+        }
+      },
+      "id": "check-group-name",
+      "name": "Group Name Viyana?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://viyana-243501843401.us-central1.run.app/api/whatsapp/chat",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{$node[\"Normalize Message\"].json[\"message\"]}}"
+            },
+            {
+              "name": "remoteJid",
+              "value": "={{$node[\"Normalize Message\"].json[\"remoteJid\"]}}"
+            },
+            {
+              "name": "senderName",
+              "value": "={{$node[\"Normalize Message\"].json[\"senderName\"]}}"
+            },
+            {
+              "name": "isGroup",
+              "value": "={{$node[\"Normalize Message\"].json[\"isGroup\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "viyana-ai-request",
+      "name": "Viyana AI Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1400,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.aethelsolutions.in/message/sendText/viyana-bot",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$node[\"Normalize Message\"].json[\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$node[\"Viyana AI Request\"].json[\"reply\"]}}"
+            },
+            {
+              "name": "linkPreview",
+              "value": true
+            }
+          ]
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "012F15E79DDC-42FA-B93E-5D1C5AD55E08"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "whatsapp-reply",
+      "name": "WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1600,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          {
+            "node": "filter-from-me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "filter-from-me": {
+      "main": [
+        [
+          {
+            "node": "normalize-message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize-message": {
+      "main": [
+        [
+          {
+            "node": "check-is-group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-is-group": {
+      "main": [
+        [
+          {
+            "node": "fetch-group-info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "viyana-ai-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch-group-info": {
+      "main": [
+        [
+          {
+            "node": "check-group-name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-group-name": {
+      "main": [
+        [
+          {
+            "node": "viyana-ai-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "viyana-ai-request": {
+      "main": [
+        [
+          {
+            "node": "whatsapp-reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

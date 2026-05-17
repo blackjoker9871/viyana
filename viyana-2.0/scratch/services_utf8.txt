@@ -1,0 +1,27 @@
+﻿+
+SERVICE: evolution-api
+REGION: us-central1
+URL: https://evolution-api-243501843401.us-central1.run.app
+LAST DEPLOYED BY: sivareshanth9871@gmail.com
+LAST DEPLOYED AT: 2026-05-13T05:55:24.331035Z
+
++
+SERVICE: n8n
+REGION: us-central1
+URL: https://n8n-243501843401.us-central1.run.app
+LAST DEPLOYED BY: sivareshanth9871@gmail.com
+LAST DEPLOYED AT: 2026-05-13T05:51:01.546906Z
+
++
+SERVICE: ollama-engine-ultra
+REGION: us-central1
+URL: https://ollama-engine-ultra-243501843401.us-central1.run.app
+LAST DEPLOYED BY: sivareshanth9871@gmail.com
+LAST DEPLOYED AT: 2026-05-13T07:11:18.127993Z
+
++
+SERVICE: viyana
+REGION: us-central1
+URL: https://viyana-243501843401.us-central1.run.app
+LAST DEPLOYED BY: sivareshanth9871@gmail.com
+LAST DEPLOYED AT: 2026-05-13T07:46:06.096731Z
