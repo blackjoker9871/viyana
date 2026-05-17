@@ -11,17 +11,22 @@ const pool = new Pool({
 });
 
 async function callGroqTriage(prompt: string, systemPrompt: string, apiKey: string) {
-  const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-    model: 'llama-3.3-70b-versatile',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
-    ],
-    response_format: { type: 'json_object' }
-  }, {
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
-  });
-  return JSON.parse(res.data.choices[0].message.content);
+  try {
+    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
+    }, {
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+    });
+    return JSON.parse(res.data.choices[0].message.content);
+  } catch (err: any) {
+    console.error("[Groq API Error]", err.response?.data || err.message);
+    throw new Error(`Groq API failed: ${JSON.stringify(err.response?.data || err.message)}`);
+  }
 }
 
 export async function POST(req: Request) {
@@ -31,10 +36,11 @@ export async function POST(req: Request) {
     const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evo.aethelsolutions.in';
     const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '012F15E79DDC-42FA-B93E-5D1C5AD55E08';
 
-    console.log(`[Viyana WhatsApp] Received message from ${senderName || 'Unknown'} (${remoteJid}): "${message}"`);
+    console.log(`[Viyana WhatsApp] Received message from ${senderName || 'Unknown'} (${remoteJid}): "${message}" | isGroup: ${isGroup}`);
 
-    // 1. Group check: Ignore all group chats instantly
-    if (isGroup || remoteJid?.endsWith('@g.us')) {
+    // 1. Group check: Correctly handle string 'false' vs boolean
+    const isGroupChat = isGroup === true || isGroup === 'true' || remoteJid?.endsWith('@g.us');
+    if (isGroupChat) {
       console.log(`[Viyana WhatsApp] Ignoring group message from ${remoteJid}`);
       return NextResponse.json({ reply: null, reason: 'Group message ignored' });
     }
