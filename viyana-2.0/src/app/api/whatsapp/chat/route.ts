@@ -228,6 +228,12 @@ You MUST respond strictly as a JSON object matching this exact schema:
     console.log(`[Viyana AI Triage Result]`, JSON.stringify(triageResult, null, 2));
 
     // 4. Update Lead in Database if extracted
+    let finalLeadState = {
+      name: savedName || senderName || 'Unknown',
+      purpose: savedPurpose,
+      status: leadStatus
+    };
+
     if (triageResult?.extractedLead?.name || triageResult?.extractedLead?.purpose || triageResult?.aiReasoning || triageResult?.isMandatoryToRespond) {
       try {
         const client = await pool.connect();
@@ -248,6 +254,12 @@ You MUST respond strictly as a JSON object matching this exact schema:
         
         const newStatus = isPersonal ? 'IGNORED_PERSONAL' : ((isAlreadyQualified || (hasValidPurpose && hasValidName)) ? 'QUALIFIED' : 'COLLECTING_INFO');
         
+        finalLeadState = {
+          name: updateName || savedName || senderName || 'Unknown',
+          purpose: updatePurpose,
+          status: newStatus
+        };
+
         await client.query(
           'UPDATE leads SET name = COALESCE($1, name), purpose = $2, status = $3, ai_reason = $4, updated_at = NOW() WHERE phone = $5',
           [updateName, updatePurpose, newStatus, triageResult.aiReasoning || null, remoteJid]
@@ -282,7 +294,8 @@ You MUST respond strictly as a JSON object matching this exact schema:
 
     return NextResponse.json({
       reply: finalReply,
-      triage: triageResult
+      triage: triageResult,
+      lead: finalLeadState
     });
 
   } catch (error: any) {
