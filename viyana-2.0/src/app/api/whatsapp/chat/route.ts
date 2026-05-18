@@ -145,14 +145,19 @@ Respond naturally, politely, and concisely matching his language (English or Tan
     let leadStatus = 'COLLECTING_INFO';
     let savedName = senderName;
     let savedPurpose = null;
+    let minutesSinceLastUpdate = 9999;
 
     try {
       const client = await pool.connect();
-      const res = await client.query('SELECT name, purpose, status FROM leads WHERE phone = $1', [remoteJid]);
+      const res = await client.query('SELECT name, purpose, status, updated_at FROM leads WHERE phone = $1', [remoteJid]);
       if (res.rows.length > 0) {
         leadStatus = res.rows[0].status;
         savedName = res.rows[0].name || senderName;
         savedPurpose = res.rows[0].purpose;
+        if (res.rows[0].updated_at) {
+          const diffMs = Date.now() - new Date(res.rows[0].updated_at).getTime();
+          minutesSinceLastUpdate = Math.floor(diffMs / (1000 * 60));
+        }
       } else {
         // Insert new lead
         await client.query(
@@ -174,10 +179,16 @@ Context about current user:
 - Known Name: ${savedName || 'Unknown'}
 - Known Purpose: ${savedPurpose || 'None recorded yet'}
 - Current Lead Status: ${leadStatus}
+- Minutes Since Last Update: ${minutesSinceLastUpdate} minutes
 
 CRITICAL RULES (IN ORDER OF PRIORITY):
-1. ABSOLUTE SILENCE FOR QUALIFIED LEADS & PERSONAL CHATS (CRITICAL LOCKDOWN!):
-   - If Current Lead Status is 'QUALIFIED', it means their inquiry has already been successfully recorded and confirmed. You MUST stay completely silent (isMandatoryToRespond: false, replyText: null) for ALL incoming messages from this user, regardless of what they ask or say! Do NOT continue chatting! Let Reshanth or the human team take over.
+1. SILENCE & FOLLOW-UP RULES FOR QUALIFIED LEADS (CRITICAL BUSINESS LOGIC!):
+   - If Current Lead Status is 'QUALIFIED':
+     * Check 'Minutes Since Last Update'. If it is LESS than 60 minutes (within 1 hour), you MUST stay completely silent (isMandatoryToRespond: false, replyText: null) for ALL incoming messages from this user to avoid spamming or looping! Do NOT continue chatting!
+     * If 'Minutes Since Last Update' is 60 minutes or MORE (after 1 hour), and the user sends a new message asking a question or checking in, you MUST respond politely acknowledging their recorded requirement and asking if they need any additional service. Example matching their language:
+       - English: "Hello sir! Your request for [Known Purpose] is already securely recorded with us. Do you need any other service or assistance?"
+       - Tanglish: "Vanakkam sir! Unga [Known Purpose] requirement engaloda system la pakka aah record aagidichu. Ungalukku vera yethavathu service thevai padutha?"
+       (When replying this way, set isMandatoryToRespond: true).
    - If Current Lead Status is 'IGNORED_PERSONAL' or Known Purpose is 'Friendly/Personal', you MUST stay completely silent for incoming messages UNLESS the user explicitly states they want to discuss a business inquiry, project, or says "business" / "work". If they mention business, you MUST respond and transition them to business mode!
    - If the incoming message is a brief acknowledgment or closing (e.g., "ok", "k", "sure", "thanks", "done", "bye", "okay", "good", "sari", "nandri"), you MUST stay completely silent (isMandatoryToRespond: false, replyText: null).
 
