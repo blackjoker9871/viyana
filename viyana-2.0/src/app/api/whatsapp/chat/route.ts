@@ -11,42 +11,88 @@ const pool = new Pool({
 });
 
 async function callGroqTriage(prompt: string, systemPrompt: string, apiKey: string) {
-  try {
-    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt }
-      ],
-      response_format: { type: 'json_object' }
-    }, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
-    });
-    return JSON.parse(res.data.choices[0].message.content);
-  } catch (err: any) {
-    console.error("[Groq API Error]", err.response?.data || err.message);
-    throw new Error(`Groq API failed: ${JSON.stringify(err.response?.data || err.message)}`);
+  const maxRetries = 3;
+  let delay = 1000;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      }, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+      });
+      return JSON.parse(res.data.choices[0].message.content);
+    } catch (err: any) {
+      const status = err.response?.status;
+      if (status === 429 && attempt < maxRetries) {
+        console.warn(`[Viyana WhatsApp] Rate limit hit (429). Retrying in ${delay}ms... (Attempt ${attempt + 1} of ${maxRetries})`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      } else {
+        console.error("[Groq API Error]", err.response?.data || err.message);
+        throw new Error(`Groq API failed: ${JSON.stringify(err.response?.data || err.message)}`);
+      }
+    }
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const { message, remoteJid, senderName, isGroup, key, messageTimestamp } = await req.json();
+    const { message, remoteJid, senderName, isGroup, groupName, fromMe, key, messageTimestamp } = await req.json();
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
     const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evo.aethelsolutions.in';
     const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '012F15E79DDC-42FA-B93E-5D1C5AD55E08';
 
-    console.log(`[Viyana WhatsApp] Received message from ${senderName || 'Unknown'} (${remoteJid}): "${message}" | isGroup: ${isGroup}`);
-
-    // 1. Group check: Correctly handle string 'false' vs boolean
+    const isFromMe = fromMe === true || fromMe === 'true' || key?.fromMe === true;
     const isGroupChat = isGroup === true || isGroup === 'true' || remoteJid?.endsWith('@g.us');
-    if (isGroupChat) {
-      console.log(`[Viyana WhatsApp] Ignoring group message from ${remoteJid}`);
+    const isViyanaGroup = groupName === 'Viyana' || (isGroupChat && groupName === 'Viyana');
+
+    console.log(`[Viyana WhatsApp] Received from ${senderName || 'Unknown'} (${remoteJid}) | isGroup: ${isGroupChat} | isViyanaGroup: ${isViyanaGroup} | fromMe: ${isFromMe} | msg: "${message}"`);
+
+    // 1. Guard against Reshanth's own messages in other chats
+    if (isFromMe && !isViyanaGroup) {
+      console.log(`[Viyana WhatsApp] Ignoring Reshanth's own outgoing message in non-Viyana chat (${remoteJid})`);
+      return NextResponse.json({ reply: null, reason: 'Ignored outgoing self message' });
+    }
+
+    // 2. Guard against all other group chats
+    if (isGroupChat && !isViyanaGroup) {
+      console.log(`[Viyana WhatsApp] Ignoring message from non-Viyana group (${remoteJid})`);
       return NextResponse.json({ reply: null, reason: 'Group message ignored' });
     }
 
     if (!GROQ_API_KEY) {
       return NextResponse.json({ error: 'Groq API key not configured' }, { status: 500 });
+    }
+
+    // 3. Special direct command mode for Viyana Group
+    if (isViyanaGroup) {
+      console.log(`[Viyana WhatsApp] Command received in Viyana Group: "${message}"`);
+      const bossPrompt = `You are Viyana, Reshanth's personal AI Executive Assistant. Reshanth is communicating with you directly in your private command group.
+Your task is to assist Reshanth directly, answer his questions, or confirm actions.
+Respond naturally, politely, and concisely matching his language (English or Tanglish). Do not format as JSON, just output the exact text reply.`;
+
+      try {
+        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: bossPrompt },
+            { role: 'user', content: message || '' }
+          ]
+        }, {
+          headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }
+        });
+        const replyText = res.data.choices[0].message.content;
+        return NextResponse.json({ reply: replyText, isCommandReply: true });
+      } catch (err: any) {
+        console.error("[Viyana Group AI Error]", err.message);
+        return NextResponse.json({ reply: "Sorry Reshanth, I encountered an error processing your command." });
+      }
     }
 
     // 2. Lookup lead status in Supabase PostgreSQL
@@ -87,22 +133,35 @@ CRITICAL RULES (IN ORDER OF PRIORITY):
 1. ABSOLUTE SILENCE FOR PERSONAL CHAT & ACKNOWLEDGMENTS (CRITICAL!):
    - If Current Lead Status is 'IGNORED_PERSONAL' or Known Purpose is 'Friendly/Personal', you MUST stay completely silent (isMandatoryToRespond: false, replyText: null) for ALL incoming messages.
    - If the incoming message is a brief acknowledgment or closing (e.g., "ok", "k", "sure", "thanks", "done", "bye", "okay", "good", "sari", "nandri"), you MUST stay completely silent (isMandatoryToRespond: false, replyText: null).
-2. ELITE PROFESSIONAL TANGLISH (POLITE EXECUTIVE PERSONA):
-   - Maintain a highly professional, respectful executive assistant persona. Do NOT use overly casual slang like "bro", "machan", or excessive exclamation marks. Use polite Tamil addressing ("sir / mam" or their name, and respectful pronouns like "neenga", "ungalukku").
-   - Do NOT repeat the same greeting ("Vanakkam") in every message! Only use "Vanakkam" for the very first conversation opener.
-   - Write in crisp, natural, conversational Tamil typed in English script (Tanglish) that flows contextually with what the user just said.
-3. INITIAL GREETING (NEW CONTACTS): When a user sends an initial greeting or conversation opener (e.g., "hi", "hello", "vanakkam", "epdi irukeenga") and Known Purpose is 'None recorded yet', introduce yourself professionally in Tanglish:
-   "Vanakkam! Naan Aethel Solutions Reshanth oda Executive AI Assistant Viyana pesuren. Neenga business inquiry aah reach out panringala, illa friendly conversation aah?"
-4. SKIP PERSONAL / FRIENDLY CHATTER: If the user states they are reaching out for friendly/personal conversation or just casual chatter (e.g., "friendly", "friend than", "summa than", "personal"), extract "Friendly/Personal" into extractedLead.purpose, and politely inform them in Tanglish:
-   "Kandippa! Reshanth ippo konjam meetings la busy aah irukkaru. Free aana udane ungalukku personal aah contact pannuvaaru. Nandri!"
+
+2. LANGUAGE & SCRIPT MIRRORING (CRITICAL!):
+   - You MUST detect the language and script of the user's incoming message and match it exactly:
+     * If the user writes in pure English (e.g., "I am looking for AI automation for my business", "Hi rishanth"): Reply strictly in elite professional English.
+     * If the user writes in Tamil script (e.g., "வணக்கம், எனக்கு ஒரு உதவி தேவை"): Reply strictly in formal, polite Tamil script.
+     * If the user writes in Tanglish / Romanized Tamil (e.g., "Nan oru product sales panren"): Reply strictly in crisp, natural Tanglish.
+   - For Tanglish replies, NEVER invent strange phonetics or unnatural words (like "parupeakaren"). Use standard vocabulary: "Neenga", "Ungalukku", "Unga", "Pesuren", "Sollunga", "Kandippa", "Panni tharalam", "Theliva puriyuthu", "Help aah irukkum", "Therinjikkalama?", "Forward pannidren".
+   - Maintain a highly professional executive persona across all languages. Do NOT use casual slang like "bro" or "machan". Use polite addressing ("sir / mam" or their name).
+   - Do NOT repeat greetings ("Vanakkam" / "Hello") in every message! Only use it for the very first conversation opener.
+
+3. INITIAL GREETING (NEW CONTACTS): When a user sends an initial opener and Known Purpose is 'None recorded yet', introduce yourself professionally matching their language:
+   - English: "Hello! I am Viyana, Executive AI Assistant to Reshanth at Aethel Solutions. Are you reaching out for a business inquiry or a friendly conversation?"
+   - Tanglish: "Vanakkam! Naan Aethel Solutions Reshanth oda Executive AI Assistant Viyana pesuren. Neenga business inquiry aah reach out panringala, illa friendly conversation aah?"
+
+4. SKIP PERSONAL / FRIENDLY CHATTER: If the user states they are reaching out for friendly/personal conversation, extract "Friendly/Personal" into extractedLead.purpose, and politely inform them matching their language:
+   - English: "Certainly! Reshanth is currently in meetings. He will reach out to you personally as soon as he is free. Thank you!"
+   - Tanglish: "Kandippa! Reshanth ippo konjam meetings la busy aah irukkaru. Free aana udane ungalukku personal aah contact pannuvaaru. Nandri!"
+
 5. COLLECTING PROJECT DETAILS & NAME (COLLECTING_INFO):
-   - If the user shares business details (e.g., "Nan oru product sales panren", "Honey product"), acknowledge their specific business professionally without repeating introductions (e.g., "Kandippa panni tharalam. Honey product sales ku AI automation romba help aah irukkum.").
-   - If Known Name is 'Unknown', politely ask for their name: "Unga name therinjikkalama?".
-   - Extract their specific purpose (e.g., "Honey product sales AI automation") into extractedLead.purpose.
+   - Acknowledge their business professionally matching their language. Example (English): "Certainly sir. AI automation will be highly beneficial for your product sales business. Please share your requirements." Example (Tanglish): "Kandippa sir. Unga product sales business ku AI automation romba help aah irukkum. Unga requirements theliva sollunga."
+   - If Known Name is 'Unknown', ask for their name matching their language ("May I know your name, please?" / "Unga name therinjikkalama?").
+   - Extract their specific purpose into extractedLead.purpose.
+
 6. SUCCESSFUL WRAP-UP (QUALIFIED LEADS):
-   - If Current Lead Status is 'QUALIFIED' (meaning their Purpose is already recorded) and the user shares additional details about their project, professionally confirm that everything is perfectly recorded for Reshanth:
-     "Nandri! Unga project details ellaam pakka aah record aagidichu. Naan Reshanth kitta forward pannidren, avar free aana udane ungalukku call / WhatsApp pannuvaaru."
-   - If Current Lead Status is 'QUALIFIED' and you have already sent the wrap-up confirmation, for any subsequent messages from them, set isMandatoryToRespond: false and replyText: null so you remain completely silent and let Reshanth take over!
+   - If Current Lead Status is 'QUALIFIED' and the user shares additional details, confirm matching their language:
+     - English: "Thank you! All your project details have been successfully recorded. I will forward this to Reshanth, and he will get in touch with you shortly."
+     - Tanglish: "Nandri! Unga project details ellaam pakka aah record aagidichu. Naan Reshanth kitta forward pannidren, avar free aana udane ungalukku call / WhatsApp pannuvaaru."
+   - If Current Lead Status is 'QUALIFIED' and you have already sent the wrap-up confirmation, for any subsequent messages from them, set isMandatoryToRespond: false and replyText: null so you remain completely silent!
+
 7. EXPLANATION: In aiReasoning, concisely explain your decision based on the message content and lead status.
 
 You MUST respond strictly as a JSON object matching this exact schema:

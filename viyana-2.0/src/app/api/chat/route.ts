@@ -25,22 +25,41 @@ export async function POST(req: Request) {
       ...messages.map((m: any) => ({ role: m.role, content: m.content }))
     ];
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: targetModel,
-        messages: formattedMessages,
-        stream: true,
-      }),
-    });
+    let response: Response | undefined;
+    const maxRetries = 3;
+    let delay = 1000; // 1 second
 
-    if (!response.ok) {
-      const err = await response.text();
-      return new Response(JSON.stringify({ error: 'Groq API Error', details: err }), { status: response.status });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: targetModel,
+          messages: formattedMessages,
+          stream: true,
+        }),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
+      if (response.status === 429 && attempt < maxRetries) {
+        console.warn(`[Viyana Web UI] Rate limit hit (429). Retrying in ${delay}ms... (Attempt ${attempt + 1} of ${maxRetries})`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      } else {
+        break;
+      }
+    }
+
+    if (!response || !response.ok) {
+      const err = response ? await response.text() : 'Failed to fetch from Groq';
+      const status = response ? response.status : 500;
+      return new Response(JSON.stringify({ error: 'Groq API Error', details: err }), { status });
     }
 
     const stream = OpenAIStream(response);
