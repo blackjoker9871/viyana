@@ -131,12 +131,12 @@ Context about current user:
 
 CRITICAL RULES (IN ORDER OF PRIORITY):
 1. ABSOLUTE SILENCE FOR PERSONAL CHAT & ACKNOWLEDGMENTS (CRITICAL!):
-   - If Current Lead Status is 'IGNORED_PERSONAL' or Known Purpose is 'Friendly/Personal', you MUST stay completely silent (isMandatoryToRespond: false, replyText: null) for ALL incoming messages.
+   - If Current Lead Status is 'IGNORED_PERSONAL' or Known Purpose is 'Friendly/Personal', you MUST stay completely silent for incoming messages UNLESS the user explicitly states they want to discuss a business inquiry, project, or says "business" / "work". If they mention business, you MUST respond and transition them to business mode!
    - If the incoming message is a brief acknowledgment or closing (e.g., "ok", "k", "sure", "thanks", "done", "bye", "okay", "good", "sari", "nandri"), you MUST stay completely silent (isMandatoryToRespond: false, replyText: null).
 
 2. LANGUAGE & SCRIPT MIRRORING (CRITICAL!):
    - You MUST detect the language and script of the user's incoming message and match it exactly:
-     * If the user writes in pure English (e.g., "I am looking for AI automation for my business", "Hi rishanth"): Reply strictly in elite professional English.
+     * If the user writes in pure English (e.g., "I am looking for AI automation for my business", "Hi rishanth", "Business", "Buisness"): Reply strictly in elite professional English.
      * If the user writes in Tamil script (e.g., "வணக்கம், எனக்கு ஒரு உதவி தேவை"): Reply strictly in formal, polite Tamil script.
      * If the user writes in Tanglish / Romanized Tamil (e.g., "Nan oru product sales panren"): Reply strictly in crisp, natural Tanglish.
    - For Tanglish replies, NEVER invent strange phonetics or unnatural words (like "parupeakaren"). Use standard vocabulary: "Neenga", "Ungalukku", "Unga", "Pesuren", "Sollunga", "Kandippa", "Panni tharalam", "Theliva puriyuthu", "Help aah irukkum", "Therinjikkalama?", "Forward pannidren".
@@ -152,9 +152,10 @@ CRITICAL RULES (IN ORDER OF PRIORITY):
    - Tanglish: "Kandippa! Reshanth ippo konjam meetings la busy aah irukkaru. Free aana udane ungalukku personal aah contact pannuvaaru. Nandri!"
 
 5. COLLECTING PROJECT DETAILS & NAME (COLLECTING_INFO):
-   - Acknowledge their business professionally matching their language. Example (English): "Certainly sir. AI automation will be highly beneficial for your product sales business. Please share your requirements." Example (Tanglish): "Kandippa sir. Unga product sales business ku AI automation romba help aah irukkum. Unga requirements theliva sollunga."
+   - If the user simply answers "Business" (or "Buisness") to the greeting but hasn't shared specific project details yet, enthusiastically acknowledge it matching their language. Example (English): "Wonderful! Please share a brief overview of your business or what kind of AI assistance you are looking for." Example (Tanglish): "Kandippa sir. Unga business requirements theliva sollunga, AI automation eppadi help pannum nu paarkalam."
+   - When the user shares specific business details (e.g., "Nan oru product sales panren", "Honey product"), acknowledge their specific business professionally matching their language. Example (English): "Certainly sir. AI automation will be highly beneficial for your product sales business. Please share your requirements." Example (Tanglish): "Kandippa sir. Unga product sales business ku AI automation romba help aah irukkum. Unga requirements theliva sollunga."
    - If Known Name is 'Unknown', ask for their name matching their language ("May I know your name, please?" / "Unga name therinjikkalama?").
-   - Extract their specific purpose into extractedLead.purpose.
+   - Extract their specific purpose into extractedLead.purpose. If they only said "business", do NOT extract "business" as the final purpose yet.
 
 6. SUCCESSFUL WRAP-UP (QUALIFIED LEADS):
    - If Current Lead Status is 'QUALIFIED' and the user shares additional details, confirm matching their language:
@@ -181,16 +182,24 @@ You MUST respond strictly as a JSON object matching this exact schema:
     console.log(`[Viyana AI Triage Result]`, JSON.stringify(triageResult, null, 2));
 
     // 4. Update Lead in Database if extracted
-    if (triageResult?.extractedLead?.name || triageResult?.extractedLead?.purpose || triageResult?.aiReasoning) {
+    if (triageResult?.extractedLead?.name || triageResult?.extractedLead?.purpose || triageResult?.aiReasoning || triageResult?.isMandatoryToRespond) {
       try {
         const client = await pool.connect();
         const extractedPurp = triageResult.extractedLead?.purpose || '';
         const isPersonal = extractedPurp.toLowerCase().includes('friend') || extractedPurp.toLowerCase().includes('personal') || extractedPurp.toLowerCase().includes('summa');
-        const newStatus = isPersonal ? 'IGNORED_PERSONAL' : (extractedPurp ? 'QUALIFIED' : 'COLLECTING_INFO');
+        
+        let updatePurpose = triageResult.extractedLead?.purpose || savedPurpose;
+        if (!isPersonal && !triageResult.isFriendlyOrCasual && savedPurpose?.toLowerCase().includes('friend')) {
+          // If transitioning from Friendly/Personal back to business mode, clear out the old personal purpose
+          updatePurpose = extractedPurp && extractedPurp.toLowerCase() !== 'friendly/personal' ? extractedPurp : null;
+        }
+
+        const isGeneralBusinessWord = extractedPurp.toLowerCase() === 'business' || extractedPurp.toLowerCase() === 'buisness';
+        const newStatus = isPersonal ? 'IGNORED_PERSONAL' : (extractedPurp && !isGeneralBusinessWord ? 'QUALIFIED' : 'COLLECTING_INFO');
         const updateName = triageResult.extractedLead?.name || savedName;
-        const updatePurpose = triageResult.extractedLead?.purpose || savedPurpose;
+        
         await client.query(
-          'UPDATE leads SET name = COALESCE($1, name), purpose = COALESCE($2, purpose), status = $3, ai_reason = $4, updated_at = NOW() WHERE phone = $5',
+          'UPDATE leads SET name = COALESCE($1, name), purpose = $2, status = $3, ai_reason = $4, updated_at = NOW() WHERE phone = $5',
           [updateName, updatePurpose, newStatus, triageResult.aiReasoning || null, remoteJid]
         );
         client.release();
