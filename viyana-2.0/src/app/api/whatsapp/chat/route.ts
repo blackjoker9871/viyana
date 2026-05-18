@@ -153,15 +153,15 @@ CRITICAL RULES (IN ORDER OF PRIORITY):
 
 5. COLLECTING PROJECT DETAILS & NAME (COLLECTING_INFO):
    - If the user simply answers "Business" (or "Buisness") to the greeting but hasn't shared specific project details yet, enthusiastically acknowledge it matching their language. Example (English): "Wonderful! Please share a brief overview of your business or what kind of AI assistance you are looking for." Example (Tanglish): "Kandippa sir. Unga business requirements theliva sollunga, AI automation eppadi help pannum nu paarkalam."
-   - When the user shares specific business details (e.g., "Nan oru product sales panren", "Honey product"), acknowledge their specific business professionally matching their language. Example (English): "Certainly sir. AI automation will be highly beneficial for your product sales business. Please share your requirements." Example (Tanglish): "Kandippa sir. Unga product sales business ku AI automation romba help aah irukkum. Unga requirements theliva sollunga."
-   - If Known Name is 'Unknown', ask for their name matching their language ("May I know your name, please?" / "Unga name therinjikkalama?").
+   - When the user shares specific business details (e.g., "Nan oru product sales panren", "Enaku ai telecaller venum"), acknowledge their specific business professionally. If you don't know their company name or personal name yet, ask for it matching their language ("May I know your company/personal name, please?" / "Unga name or company name theliva sollunga sir.").
    - Extract their specific purpose into extractedLead.purpose. If they only said "business", do NOT extract "business" as the final purpose yet.
 
-6. SUCCESSFUL WRAP-UP (QUALIFIED LEADS):
-   - If Current Lead Status is 'QUALIFIED' and the user shares additional details, confirm matching their language:
+6. SUCCESSFUL WRAP-UP (FINAL CONFIRMATION):
+   - When the user provides their name or company name (e.g., "Lemuria", "Rajesh") in response to your question, or when they have provided both their project requirements AND name:
+     Extract their name into extractedLead.name. You MUST respond with the final wrap-up confirmation matching their language:
      - English: "Thank you! All your project details have been successfully recorded. I will forward this to Reshanth, and he will get in touch with you shortly."
-     - Tanglish: "Nandri! Unga project details ellaam pakka aah record aagidichu. Naan Reshanth kitta forward pannidren, avar free aana udane ungalukku call / WhatsApp pannuvaaru."
-   - If Current Lead Status is 'QUALIFIED' and you have already sent the wrap-up confirmation, for any subsequent messages from them, set isMandatoryToRespond: false and replyText: null so you remain completely silent!
+     - Tanglish: "Nandri sir! Unga project details ellaam pakka aah record aagidichu. Naan Reshanth kitta forward pannidren, avar free aana udane ungalukku call / WhatsApp pannuvaaru."
+   - Once you have sent this final wrap-up confirmation (or if Current Lead Status is 'QUALIFIED' and they are just sending brief acknowledgments like "ok", "thanks"), set isMandatoryToRespond: false and replyText: null to remain completely silent!
 
 7. EXPLANATION: In aiReasoning, concisely explain your decision based on the message content and lead status.
 
@@ -195,8 +195,11 @@ You MUST respond strictly as a JSON object matching this exact schema:
         }
 
         const isGeneralBusinessWord = extractedPurp.toLowerCase() === 'business' || extractedPurp.toLowerCase() === 'buisness';
-        const newStatus = isPersonal ? 'IGNORED_PERSONAL' : (extractedPurp && !isGeneralBusinessWord ? 'QUALIFIED' : 'COLLECTING_INFO');
         const updateName = triageResult.extractedLead?.name || savedName;
+        const hasValidPurpose = updatePurpose && !isGeneralBusinessWord && updatePurpose.toLowerCase() !== 'friendly/personal';
+        const hasValidName = updateName && updateName.toLowerCase() !== 'unknown';
+        
+        const newStatus = isPersonal ? 'IGNORED_PERSONAL' : ((hasValidPurpose && hasValidName && triageResult.extractedLead?.name) ? 'QUALIFIED' : 'COLLECTING_INFO');
         
         await client.query(
           'UPDATE leads SET name = COALESCE($1, name), purpose = $2, status = $3, ai_reason = $4, updated_at = NOW() WHERE phone = $5',
