@@ -10,10 +10,33 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-async function callGroqTriage(prompt: string, systemPrompt: string, apiKey: string) {
+async function callAITriage(prompt: string, systemPrompt: string, groqKey?: string, geminiKey?: string) {
+  if (geminiKey) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+      const payload = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: { responseMimeType: "application/json" }
+      };
+      const res = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+      const textContent = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textContent) {
+        console.log("[Viyana AI Engine] Successfully processed triage with Gemini 2.5 Flash");
+        return JSON.parse(textContent);
+      }
+    } catch (geminiErr: any) {
+      console.warn("[Gemini Triage Warning] Failed, falling back to Groq Llama 3...", geminiErr.response?.data?.error?.message || geminiErr.message);
+    }
+  }
+
+  if (!groqKey) {
+    throw new Error("No AI API keys configured");
+  }
+
+  console.log("[Viyana AI Engine] Calling Groq Llama 3...");
   const maxRetries = 3;
   let delay = 1000;
-
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
@@ -24,27 +47,59 @@ async function callGroqTriage(prompt: string, systemPrompt: string, apiKey: stri
         ],
         response_format: { type: 'json_object' }
       }, {
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+        headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' }
       });
       return JSON.parse(res.data.choices[0].message.content);
     } catch (err: any) {
-      const status = err.response?.status;
-      if (status === 429 && attempt < maxRetries) {
+      if (err.response?.status === 429 && attempt < maxRetries) {
         console.warn(`[Viyana WhatsApp] Rate limit hit (429). Retrying in ${delay}ms... (Attempt ${attempt + 1} of ${maxRetries})`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2;
       } else {
-        console.error("[Groq API Error]", err.response?.data || err.message);
-        throw new Error(`Groq API failed: ${JSON.stringify(err.response?.data || err.message)}`);
+        throw err;
       }
     }
   }
+}
+
+async function callAICommand(prompt: string, bossPrompt: string, groqKey?: string, geminiKey?: string) {
+  if (geminiKey) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+      const payload = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: bossPrompt }] }
+      };
+      const res = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+      const textContent = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textContent) {
+        console.log("[Viyana AI Engine] Successfully processed command with Gemini 2.5 Flash");
+        return textContent;
+      }
+    } catch (geminiErr: any) {
+      console.warn("[Gemini Command Warning] Failed, falling back to Groq Llama 3...", geminiErr.response?.data?.error?.message || geminiErr.message);
+    }
+  }
+
+  if (!groqKey) return "Sorry Reshanth, AI keys are not configured.";
+
+  const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      { role: 'system', content: bossPrompt },
+      { role: 'user', content: prompt }
+    ]
+  }, {
+    headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' }
+  });
+  return res.data.choices[0].message.content;
 }
 
 export async function POST(req: Request) {
   try {
     const { message, remoteJid, senderName, isGroup, groupName, fromMe, key, messageTimestamp } = await req.json();
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    const GEMINI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY;
     const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evo.aethelsolutions.in';
     const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '012F15E79DDC-42FA-B93E-5D1C5AD55E08';
 
@@ -66,8 +121,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ reply: null, reason: 'Group message ignored' });
     }
 
-    if (!GROQ_API_KEY) {
-      return NextResponse.json({ error: 'Groq API key not configured' }, { status: 500 });
+    if (!GROQ_API_KEY && !GEMINI_API_KEY) {
+      return NextResponse.json({ error: 'AI API keys not configured' }, { status: 500 });
     }
 
     // 3. Special direct command mode for Viyana Group
@@ -78,16 +133,7 @@ Your task is to assist Reshanth directly, answer his questions, or confirm actio
 Respond naturally, politely, and concisely matching his language (English or Tanglish). Do not format as JSON, just output the exact text reply.`;
 
       try {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: bossPrompt },
-            { role: 'user', content: message || '' }
-          ]
-        }, {
-          headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }
-        });
-        const replyText = res.data.choices[0].message.content;
+        const replyText = await callAICommand(message || '', bossPrompt, GROQ_API_KEY, GEMINI_API_KEY);
         return NextResponse.json({ reply: replyText, isCommandReply: true });
       } catch (err: any) {
         console.error("[Viyana Group AI Error]", err.message);
@@ -179,7 +225,7 @@ You MUST respond strictly as a JSON object matching this exact schema:
   }
 }`;
 
-    const triageResult = await callGroqTriage(message || '', systemPrompt, GROQ_API_KEY);
+    const triageResult = await callAITriage(message || '', systemPrompt, GROQ_API_KEY, GEMINI_API_KEY);
     console.log(`[Viyana AI Triage Result]`, JSON.stringify(triageResult, null, 2));
 
     // 4. Update Lead in Database if extracted
