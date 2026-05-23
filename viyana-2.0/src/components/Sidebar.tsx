@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   LayoutGrid,
   History,
-  Workflow
+  Workflow,
+  PhoneCall
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -68,6 +69,13 @@ const Sidebar = ({
         >
           <Workflow size={16} className={activeView === 'workflow' ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-500'} />
           <span className="text-sm font-medium">Workflow</span>
+        </button>
+        <button 
+          onClick={() => onViewChange('telecaller')} 
+          className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-all group ${activeView === 'telecaller' ? 'bg-white/5 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+        >
+          <PhoneCall size={16} className={activeView === 'telecaller' ? 'text-emerald-500' : 'text-gray-600 group-hover:text-emerald-500'} />
+          <span className="text-sm font-medium">Telecaller</span>
         </button>
       </div>
 

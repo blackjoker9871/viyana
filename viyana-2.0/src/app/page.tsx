@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import ChatWindow from '@/components/ChatWindow';
 import WorkflowBuilder from '@/components/WorkflowBuilder';
+import TelecallerEngine from '@/components/TelecallerEngine';
 
 export default function Home() {
   const [activeView, setActiveView] = useState('chat');
@@ -47,6 +48,11 @@ export default function Home() {
         {/* Workflow Builder - kept in DOM but hidden to prevent iframe reload */}
         <div className={activeView === 'workflow' ? 'block h-full' : 'hidden h-full'}>
           <WorkflowBuilder />
+        </div>
+
+        {/* AI Telecaller Voice Engine - kept in DOM but hidden to prevent iframe reload */}
+        <div className={activeView === 'telecaller' ? 'block h-full' : 'hidden h-full'}>
+          <TelecallerEngine />
         </div>
       </div>
     </main>

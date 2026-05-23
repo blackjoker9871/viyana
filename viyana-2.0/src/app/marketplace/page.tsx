@@ -15,6 +15,15 @@ import { motion } from 'framer-motion';
 
 const MARKETPLACE_BOTS = [
   {
+    name: 'Dograh (AI Telecaller)',
+    category: 'Agency & Lead Gen',
+    description: 'Elite AI Automation Agency Telecaller talking fluently in Tamil & Tanglish. Real-time client qualification & Google Sheets syncing.',
+    price: '₹49,999',
+    rentPrice: '₹4,999/mo',
+    rating: '5.0',
+    icon: <Sparkles size={32} />
+  },
+  {
     name: 'Medical Receptionist Pro',
     category: 'Healthcare',
     description: 'Automates patient scheduling, insurance verification, and FAQ handling via WhatsApp and Web.',

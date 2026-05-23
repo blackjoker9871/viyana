@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useChat } from 'ai/react';
 
 const MODELS = [
+  { id: 'dograh-tamil', name: 'Dograh (AI Telecaller)', desc: 'Elite AI Automation Agency Telecaller in Tamil/Tanglish with Google Sheets Sync' },
   { id: 'viyana-fast', name: 'Viyana Fast', desc: 'Ultra-fast instant responses (Llama 3.1 8B)' },
   { id: 'viyana-thinker', name: 'Viyana Thinker', desc: 'Deep reasoning & business intelligence (Llama 3.3 70B)' },
 ];
@@ -254,10 +255,10 @@ const ChatWindow = ({ chatId = 'default' }: { chatId?: string }) => {
             {/* Suggestion Chips */}
             <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 mt-10">
               {[
-                'Build a Medical Receptionist Bot',
-                'Spent 500 on dinner today',
-                'Received 5000 from Client',
-                'Add lead John, 9876543210'
+                'வணக்கம் டோக்ரா, எங்கள் பிசினஸுக்கு வாட்ஸ்அப் போட் மற்றும் AI ஆட்டோமேஷன் தேவை',
+                'Explore AI voice agents & WhatsApp lead closer bots in Tanglish',
+                'Sync business leads and automation requirements to Google Sheets',
+                'Build a Medical Receptionist Bot'
               ].map((suggestion) => (
                 <button 
                   key={suggestion} 

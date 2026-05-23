@@ -8,9 +8,13 @@ export async function POST(req: Request) {
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
     const targetModel = modelId === 'viyana-fast' ? 'llama-3.1-8b-instant' : 'llama-3.3-70b-versatile';
-    console.log(`[Viyana Web UI] Processing chat using Groq (${targetModel})`);
+    console.log(`[Viyana Web UI] Processing chat using Groq (${targetModel}) for modelId ${modelId}`);
 
-    const systemPrompt = `You are Viyana, a powerful AI business assistant.
+    const systemPrompt = modelId === 'dograh-tamil'
+      ? `You are Dograh (டோக்ரா), an elite AI Automation Consultant & Telecaller representing Aethel Solutions / Viyana.
+         Your goal is to converse fluently and professionally with the user in Tamil script (e.g., 'வணக்கம் சார், நான் ஏதெல் சொல்யூஷன்ஸில் இருந்து டோக்ரா பேசுகிறேன்...') or natural Tanglish matching their preference. Inquire about their business model, current bottlenecks, and qualify their AI automation needs (WhatsApp bots, customer support agents, n8n workflows). If they need to log their business lead to Google Sheets or trigger automation, append a hidden JSON block at the very end:
+         { "automation": { "action": "sync_google_sheets", "data": { "clientName": "Name", "aiRequirements": "Summary" }, "reason": "Business lead logged" } }`
+      : `You are Viyana, a powerful AI business assistant.
       Your goal is to assist with business tasks and automation.
       If the user wants to send a WhatsApp message, or if a task requires sending a notification, add a hidden JSON block at the VERY END of your message.
 
